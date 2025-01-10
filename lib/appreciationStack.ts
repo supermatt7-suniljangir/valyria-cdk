@@ -13,25 +13,29 @@ import config from "../utils/config";
 import { commonNodeJsFunctionBundling } from "../utils/bundling";
 import { addCorsToResponses } from "../utils/others";
 
-interface UserStackProps extends StackProps {
+interface AppreciationStackProps extends StackProps {
   stageName: string;
   removalPolicy: cdk.RemovalPolicy;
 }
 
-export class UserStack extends Stack {
-  public readonly userTable: dynamodb.Table;
+export class AppreciationStack extends Stack {
+  public readonly appreciationTable: dynamodb.Table;
 
-  constructor(scope: Construct, id: string, props: UserStackProps) {
+  constructor(scope: Construct, id: string, props: AppreciationStackProps) {
     super(scope, id, props);
 
     const { stageName = STAGES.DEV, removalPolicy = cdk.RemovalPolicy.RETAIN } =
       props || {};
 
-    // Create User table
-    this.userTable = new dynamodb.Table(this, "UserTable", {
-      tableName: config.USER_TABLE_NAME(stageName),
+    // Create Appreciation table
+    this.appreciationTable = new dynamodb.Table(this, "AppreciationTable", {
+      tableName: config.APPRECIATION_TABLE_NAME(stageName),
       partitionKey: {
         name: "userId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "projectId",
         type: dynamodb.AttributeType.STRING,
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -41,24 +45,22 @@ export class UserStack extends Stack {
       removalPolicy: removalPolicy,
     });
 
-    // Add GSIs for user lookups
-    this.userTable.addGlobalSecondaryIndex({
-      indexName: `userTableIndex-${stageName}-email`,
-      partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["avatar", "availableForHire", "fullName"],
-    });
-
-    this.userTable.addGlobalSecondaryIndex({
-      indexName: `userTableIndex-${stageName}-fullName`,
-      partitionKey: { name: "fullName", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["email", "avatar", "availableForHire"],
+    // Add GSI for project-based queries
+    this.appreciationTable.addGlobalSecondaryIndex({
+      indexName: `appreciationTableIndex-${stageName}-projectId`,
+      partitionKey: {
+        name: "projectId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "createdAt",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
 
     // Create Lambda role
-    const lambdaRole = new iam.Role(this, "UserLambdaRole", {
+    const lambdaRole = new iam.Role(this, "AppreciationLambdaRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
@@ -68,16 +70,16 @@ export class UserStack extends Stack {
     });
 
     // Create Lambda functions
-    const getUserProfile = new lambda_nodejs.NodejsFunction(
+    const getAppreciations = new lambda_nodejs.NodejsFunction(
       this,
-      "getUserProfile",
+      "getAppreciations",
       {
-        functionName: `${stageName}-getUserProfile`,
+        functionName: `${stageName}-getAppreciations`,
         runtime: lambda.Runtime.NODEJS_20_X,
-        entry: path.join(__dirname, "../lambda/user/getProfile.ts"),
+        entry: path.join(__dirname, "../lambda/appreciation/getAppreciations.ts"),
         handler: "handler",
         environment: {
-          USER_TABLE_NAME: this.userTable.tableName,
+          APPRECIATION_TABLE_NAME: this.appreciationTable.tableName,
           JWT_SECRET_NAME: config.AWS_SECRET.JWT_SECRET(stageName),
           STAGE: stageName,
         },
@@ -86,16 +88,16 @@ export class UserStack extends Stack {
       }
     );
 
-    const updateUserProfile = new lambda_nodejs.NodejsFunction(
+    const toggleAppreciation = new lambda_nodejs.NodejsFunction(
       this,
-      "updateUserProfile",
+      "toggleAppreciation",
       {
-        functionName: `${stageName}-updateUserProfile`,
+        functionName: `${stageName}-toggleAppreciation`,
         runtime: lambda.Runtime.NODEJS_20_X,
-        entry: path.join(__dirname, "../lambda/user/updateProfile.ts"),
+        entry: path.join(__dirname, "../lambda/appreciation/toggleAppreciation.ts"),
         handler: "handler",
         environment: {
-          USER_TABLE_NAME: this.userTable.tableName,
+          APPRECIATION_TABLE_NAME: this.appreciationTable.tableName,
           JWT_SECRET_NAME: config.AWS_SECRET.JWT_SECRET(stageName),
           STAGE: stageName,
         },
@@ -105,11 +107,11 @@ export class UserStack extends Stack {
     );
 
     // Grant permissions
-    this.userTable.grantReadWriteData(getUserProfile);
-    this.userTable.grantReadWriteData(updateUserProfile);
+    this.appreciationTable.grantReadWriteData(getAppreciations);
+    this.appreciationTable.grantReadWriteData(toggleAppreciation);
 
     // Add Secrets Manager permissions
-    [getUserProfile, updateUserProfile].forEach((fn) => {
+    [getAppreciations, toggleAppreciation].forEach((fn) => {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           actions: ["secretsmanager:GetSecretValue"],
@@ -123,34 +125,35 @@ export class UserStack extends Stack {
     });
 
     // Create API Gateway
-    const api = new apigateway.RestApi(this, "UserAPI", {
-      restApiName: `${stageName}-UserAPI`,
+    const api = new apigateway.RestApi(this, "AppreciationAPI", {
+      restApiName: `${stageName}-AppreciationAPI`,
       defaultCorsPreflightOptions: config.DEFAULT_CORS_PREFLIGHT_OPTIONS,
       deployOptions: config.DEPLOY_OPTIONS[stageName as STAGES],
     });
     addCorsToResponses(api);
 
     // Add routes
-    const userResource = api.root.addResource("user");
-    userResource.addMethod(
+    const rootResource = api.root.addResource("project");
+    const appreciationResource = rootResource.addResource("appreciation");
+    appreciationResource.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(getUserProfile)
+      new apigateway.LambdaIntegration(getAppreciations)
     );
-    userResource.addMethod(
-      "PUT",
-      new apigateway.LambdaIntegration(updateUserProfile)
+    appreciationResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(toggleAppreciation)
     );
 
     // Outputs
-    new cdk.CfnOutput(this, "UserApiUrl", {
+    new cdk.CfnOutput(this, "AppreciationApiUrl", {
       value: api.url,
-      description: "The base URL of the User API",
-      exportName: "UserApiUrlOutput",
+      description: "The base URL of the Appreciation API",
+      exportName: "AppreciationApiUrlOutput",
     });
 
     // Apply removal policy
     api.applyRemovalPolicy(removalPolicy);
-    [getUserProfile, updateUserProfile].forEach((resource) => {
+    [getAppreciations, toggleAppreciation].forEach((resource) => {
       const cfnResource = resource.node.defaultChild as cdk.CfnResource;
       cfnResource.applyRemovalPolicy(removalPolicy);
     });

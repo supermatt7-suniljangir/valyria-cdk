@@ -1,8 +1,13 @@
 import { Construct } from "constructs";
 import * as cdk from "aws-cdk-lib";
-import { UserStack } from "./userStack";
 import { STAGES } from "../utils/stages";
+import { UserStack } from "./userStack";
 import { AuthStack } from "./authStack";
+import { FeedbackStack } from "./feedbackStack";
+import { AppreciationStack } from "./appreciationStack";
+import { BookmarkStack } from "./bookmarkStack";
+import { FollowerStack } from "./followerStack";
+import { CommentStack } from "./commentsStack";
 
 interface PipelineStageProps {
   stageName?: STAGES;
@@ -17,13 +22,40 @@ export class PipelineStage extends cdk.Stage {
       removalPolicy = cdk.RemovalPolicy.DESTROY,
     } = props || {};
 
-    const demoStack = new UserStack(this, `user-${stageName}`, {
+    const userStack = new UserStack(this, `user-${stageName}`, {
       stageName: stageName,
       removalPolicy: removalPolicy,
     });
+    const feedbackStack = new FeedbackStack(this, `feedback-${stageName}`, {
+      stageName: stageName,
+      removalPolicy: removalPolicy,
+    });
+    const followStack = new FollowerStack(this, `follow-${stageName}`, {
+      stageName: stageName,
+      removalPolicy: removalPolicy,
+    });
+    const comment = new CommentStack(this, `comment-${stageName}`, {
+      stageName: stageName,
+      removalPolicy: removalPolicy,
+    });
+    const bookmarkStack = new BookmarkStack(this, `bookmark-${stageName}`, {
+      stageName: stageName,
+      removalPolicy: removalPolicy,
+    });
+
+    const appreciationStack = new AppreciationStack(
+      this,
+      `appreciation-${stageName}`,
+      {
+        stageName: stageName,
+        removalPolicy: removalPolicy,
+      }
+    );
+
     const authStack = new AuthStack(this, `auth-${stageName}`, {
       stageName: stageName,
       removalPolicy: removalPolicy,
+      userTable: userStack.userTable,
     });
   }
 }

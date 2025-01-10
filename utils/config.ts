@@ -2,7 +2,11 @@ import { STAGES } from "./stages";
 
 interface Config {
   USER_TABLE_NAME: (stageName: string) => string;
-  USER_TABLE_INDEX_NAME_FOR_EMAIL: (stageName: string) => string;
+  FEEDBACK_TABLE_NAME: (stageName: string) => string;
+  COMMENTS_TABLE_NAME: (stageName: string) => string;
+  BOOKMARKS_TABLE_NAME: (stageName: string) => string;
+  FOLLOWERS_TABLE_NAME: (stageName: string) => string;
+  APPRECIATION_TABLE_NAME: (stageName: string) => string;
   USER_API_RATE_LIMIT: {
     dev: number;
     prod: number;
@@ -37,9 +41,18 @@ interface Config {
 }
 
 const config: Config = Object.freeze({
-  USER_TABLE_INDEX_NAME_FOR_EMAIL: (stageName: string) =>
-    `${stageName}-userTableIndex`,
-  USER_TABLE_NAME: (stageName: string) => `${stageName}-userTable-ddb`,
+  FOLLOWERS_TABLE_NAME: (stageName: string): string =>
+    `${stageName}-followersTable`,
+  FEEDBACK_TABLE_NAME: (stageName: string): string =>
+    `${stageName}-feedbackTable`,
+  COMMENTS_TABLE_NAME: (stageName: string): string =>
+    `${stageName}-commentsTable`,
+  BOOKMARKS_TABLE_NAME: (stageName: string): string =>
+    `${stageName}-bookmarksTable`,
+  APPRECIATION_TABLE_NAME: (stageName: string): string =>
+    `${stageName}-appreciationTable`,
+
+  USER_TABLE_NAME: (stageName: string) => `${stageName}-userProfileTable`,
   USER_API_RATE_LIMIT: Object.freeze({
     dev: 100,
     prod: 1000,

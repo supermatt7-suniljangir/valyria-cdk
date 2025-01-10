@@ -1,13 +1,4 @@
-import {
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-  //   S3Event,
-  //   SNSEvent,
-  //   DynamoDBStreamEvent,
-  //   SQSEvent,
-  //   CloudWatchLogsEvent,
-  //   CloudFormationCustomResourceEvent,
-} from "aws-lambda";
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 export const handler = async (
   event: APIGatewayProxyEvent
